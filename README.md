@@ -10,23 +10,24 @@ CarbonLense provides a deterministic 5-step workflow that transforms facility an
 
 ```mermaid
 flowchart LR
-  UI["UI Steps\n(src/components/steps)"]
-  APP["App Controller\n(src/App.tsx)"]
+  USER["User"]
+  UI["React UI"]
   STATE["App State\n(useAppState)"]
-  LIB["Core Logic\n(src/lib/*)"]
-  EGRID["eGRID Dataset\n(src/data/egrid.ts)"]
-  REPORT["Report Generation\n(pdfGenerator + zipExport)"]
-  OUT["Export ZIP\nPDF + JSON + CSV + audit + manifest"]
+  LIB["Domain Logic\n(src/lib)"]
+  DATA["eGRID Dataset"]
+  REPORT["Report Generation"]
+  OUT["Export Outputs\nPDF / CSV / ZIP"]
 
-  UI --> APP --> STATE
-  UI --> LIB
-  EGRID --> UI
-  EGRID --> LIB
+  USER --> UI
+  UI --> STATE
   STATE --> LIB
-  STATE --> REPORT
+  DATA --> LIB
   LIB --> STATE
+  STATE --> REPORT
   REPORT --> OUT
 ```
+
+*Flow summary: the user interacts with the React screens, state is managed in `useAppState`, core calculations/validation run in `src/lib` using eGRID data, and the final step generates downloadable PDF/CSV/ZIP outputs.*
 
 ## Key features
 - 5-step guided workflow: facility onboarding -> generation upload -> displacement calculation -> readiness validation -> export
