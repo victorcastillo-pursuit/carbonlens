@@ -94,6 +94,17 @@ export default function App() {
     }
     actions.setCalculation(calc);
     actions.appendAuditEvent(event);
+
+    // Log fallback event when flat-rate is used instead of hourly marginal
+    if (calc.mode === 'annual_flat' && calc.fallbackReason) {
+      actions.appendAuditEvent(createAuditEvent('calculation_mode_fallback', {
+        calculationId: calc.id,
+        fallbackReason: calc.fallbackReason,
+        gridMixDataAvailable: !!(state.gridMixData && state.gridMixData.length > 0),
+        hourlyRecordsAvailable: !!(state.generationData?.hourlyRecords?.length),
+      }));
+    }
+
     actions.goToStep(4);
   }
 
