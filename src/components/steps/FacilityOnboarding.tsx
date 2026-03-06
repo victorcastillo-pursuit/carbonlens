@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Building2, Info } from 'lucide-react';
-import { AppState, Facility } from '../../types';
+import { AppState, Facility, USPVDBFacility } from '../../types';
 import { EGRID_SUBREGIONS, SUBREGION_LABELS, getEmissionFactor } from '../../data/egrid';
 import { generateUUID } from '../../lib/crypto';
 import { createAuditEvent } from '../../lib/auditLog';
@@ -12,6 +12,7 @@ import { FieldRow } from '../ui/FieldRow';
 interface Props {
   state: AppState;
   onSave: (facility: Facility, event: AuditEvent) => void;
+  onLookup: (uspvdb: USPVDBFacility, event: AuditEvent) => void;
   onNext: () => void;
 }
 

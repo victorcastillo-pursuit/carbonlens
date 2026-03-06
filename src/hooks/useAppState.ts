@@ -1,11 +1,13 @@
 import { useReducer } from 'react';
-import { AppState, Facility, GenerationData, Calculation, ReadinessResult, ReportArtifact, AuditEvent } from '../types';
+import { AppState, Facility, GenerationData, Calculation, ReadinessResult, ReportArtifact, AuditEvent, HourlyGridMix, USPVDBFacility } from '../types';
 
 // ── Action types ─────────────────────────────────────────────────────────────
 
 type Action =
   | { type: 'SET_FACILITY'; payload: Facility }
+  | { type: 'SET_FACILITY_LOOKUP'; payload: USPVDBFacility | null }
   | { type: 'SET_GENERATION_DATA'; payload: GenerationData }
+  | { type: 'SET_GRID_MIX_DATA'; payload: HourlyGridMix[] | null }
   | { type: 'SET_CALCULATION'; payload: Calculation }
   | { type: 'SET_READINESS'; payload: ReadinessResult }
   | { type: 'SET_REPORT_ARTIFACT'; payload: ReportArtifact }
@@ -32,10 +34,18 @@ const INITIAL_STATE: AppState = {
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'SET_FACILITY':
-      return { ...state, facility: action.payload };
+      // Changing facility clears grid mix (BA may have changed) and everything downstream
+      return { ...state, facility: action.payload, facilityLookup: null, gridMixData: null, calculation: null, readiness: null, reportArtifact: null };
+
+    case 'SET_FACILITY_LOOKUP':
+      return { ...state, facilityLookup: action.payload };
 
     case 'SET_GENERATION_DATA':
-      return { ...state, generationData: action.payload };
+      // Changing generation data clears grid mix (date range may have changed) and everything downstream
+      return { ...state, generationData: action.payload, gridMixData: null, calculation: null, readiness: null, reportArtifact: null };
+
+    case 'SET_GRID_MIX_DATA':
+      return { ...state, gridMixData: action.payload };
 
     case 'SET_CALCULATION':
       return {
@@ -57,14 +67,13 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, currentStep: action.payload };
 
     case 'RESET_FROM_STEP': {
-      // Clear all state at and after the given step
       const step = action.payload;
       return {
         ...state,
         currentStep: step,
-        ...(step <= 1 ? { facility: null } : {}),
-        ...(step <= 2 ? { generationData: null } : {}),
-        ...(step <= 3 ? { calculation: null } : {}),
+        ...(step <= 1 ? { facility: null, facilityLookup: null } : {}),
+        ...(step <= 2 ? { generationData: null, gridMixData: null } : {}),
+        ...(step <= 3 ? { calculation: null, gridMixData: null } : {}),
         ...(step <= 4 ? { readiness: null } : {}),
         ...(step <= 5 ? { reportArtifact: null } : {}),
       };
@@ -84,8 +93,14 @@ export function useAppState() {
     setFacility: (facility: Facility) =>
       dispatch({ type: 'SET_FACILITY', payload: facility }),
 
+    setFacilityLookup: (uspvdb: USPVDBFacility | null) =>
+      dispatch({ type: 'SET_FACILITY_LOOKUP', payload: uspvdb }),
+
     setGenerationData: (data: GenerationData) =>
       dispatch({ type: 'SET_GENERATION_DATA', payload: data }),
+
+    setGridMixData: (data: HourlyGridMix[] | null) =>
+      dispatch({ type: 'SET_GRID_MIX_DATA', payload: data }),
 
     setCalculation: (calc: Calculation) =>
       dispatch({ type: 'SET_CALCULATION', payload: calc }),
