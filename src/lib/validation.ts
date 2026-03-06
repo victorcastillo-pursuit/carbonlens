@@ -1,6 +1,8 @@
 import { AppState, ReadinessCheck, ReadinessResult } from '../types';
 import { EGRID_DATASET_VERSION } from '../data/egrid';
-import { FORMULA_VERSION, LBS_PER_MT, ADJUSTMENT_FACTOR } from './calculation';
+import { FORMULA_VERSION, FORMULA_VERSION_HOURLY, LBS_PER_MT, ADJUSTMENT_FACTOR } from './calculation';
+import { hasHourlyDataSupport } from '../data/egridCrosswalk';
+import { deriveHourlyMarginalRates } from './marginalEmissions';
 
 const PREREQUISITE_EVENTS = [
   'facility_created',
@@ -123,7 +125,7 @@ export function runReadinessValidation(state: AppState): ReadinessResult {
 
   // ─── 4. Calculation Integrity ───────────────────────────────────────────────
   const calc = state.calculation;
-  const formulaOk = calc?.formulaVersion === FORMULA_VERSION;
+  const formulaOk = calc?.formulaVersion === FORMULA_VERSION || calc?.formulaVersion === FORMULA_VERSION_HOURLY;
   const hasBothMt = calc && calc.rawMt != null && calc.adjustedMt != null;
   const notSuperseded = calc?.status === 'active';
 
@@ -160,7 +162,7 @@ export function runReadinessValidation(state: AppState): ReadinessResult {
       ? 'No calculation'
       : formulaOk
       ? `Formula: ${calc.formulaVersion}`
-      : `Formula version mismatch: ${calc.formulaVersion}`,
+      : `Formula version mismatch: ${calc.formulaVersion} (expected ${FORMULA_VERSION} or ${FORMULA_VERSION_HOURLY})`,
   });
 
   checks.push({
@@ -212,6 +214,64 @@ export function runReadinessValidation(state: AppState): ReadinessResult {
         ? `"${eventType}" present in audit log`
         : `Missing audit event: "${eventType}"`,
     });
+  }
+
+  // ─── 6. Hourly Data Coverage (only when calculation mode is hourly_marginal) ─
+  if (calc?.mode === 'hourly_marginal' && state.gridMixData) {
+    const subregion = state.facility?.egridSubregion ?? '';
+    const hasBA = hasHourlyDataSupport(subregion);
+
+    checks.push({
+      id: 'hourly_ba_alignment',
+      category: 'Hourly Data Coverage',
+      label: 'Balancing authority mapping exists',
+      severity: hasBA ? 'PASS' : 'BLOCK',
+      message: hasBA
+        ? `Subregion ${subregion} has EIA balancing authority mapping`
+        : `No balancing authority mapping for subregion ${subregion} — hourly calculation unavailable`,
+    });
+
+    const genHours = state.generationData?.hourlyRecords?.length ?? 0;
+    const gridHours = new Set(state.gridMixData.map(r => r.period)).size;
+    const coveragePct = genHours > 0 ? (gridHours / genHours) * 100 : 0;
+    const coverageSeverity: ReadinessCheck['severity'] =
+      coveragePct >= 90 ? 'PASS' : coveragePct >= 80 ? 'WARN' : 'BLOCK';
+
+    checks.push({
+      id: 'hourly_eia_coverage',
+      category: 'Hourly Data Coverage',
+      label: 'EIA data coverage ≥ 90%',
+      severity: genHours === 0 ? 'BLOCK' : coverageSeverity,
+      message: genHours === 0
+        ? 'No hourly generation records to evaluate coverage against'
+        : `EIA data covers ${coveragePct.toFixed(1)}% of generation period (${gridHours} of ${genHours} hours)`,
+    });
+
+    // Rate sanity check
+    if (state.gridMixData.length > 0) {
+      const rates = deriveHourlyMarginalRates(state.gridMixData);
+      const outOfRange = rates.filter(r => r.marginalEmissionRate > 0 && (r.marginalEmissionRate < 100 || r.marginalEmissionRate > 3000));
+      checks.push({
+        id: 'hourly_rate_sanity',
+        category: 'Hourly Data Coverage',
+        label: 'Marginal rates within expected range (100–3000 lbs/MWh)',
+        severity: outOfRange.length > 0 ? 'WARN' : 'PASS',
+        message: outOfRange.length > 0
+          ? `${outOfRange.length} hours have marginal rates outside expected range (100–3000 lbs/MWh)`
+          : 'All marginal rates are within expected range',
+      });
+    }
+
+    // Interpolation flag
+    if (state.generationData?.interpolated) {
+      checks.push({
+        id: 'hourly_interpolation_flag',
+        category: 'Hourly Data Coverage',
+        label: 'Generation data granularity',
+        severity: 'WARN',
+        message: 'Generation data was interpolated from daily to hourly using a standard solar profile',
+      });
+    }
   }
 
   const blockingCount = checks.filter(c => c.severity === 'BLOCK').length;

@@ -33,8 +33,7 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
     if (!facility || !generationData) return;
     setCalculating(true);
 
-    // Mark previous calculation as superseded if present
-    const newCalc = calculateDisplacement(facility, generationData);
+    const newCalc = await calculateDisplacement(facility, generationData, state.gridMixData);
 
     const event = createAuditEvent('calculation_executed', {
       calculationId: newCalc.id,
