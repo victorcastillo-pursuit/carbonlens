@@ -20,6 +20,7 @@ const CATEGORY_ORDER = [
   'Emission Factor Alignment',
   'Calculation Integrity',
   'Audit Integrity',
+  'Hourly Data Coverage',
 ];
 
 export function ReadinessValidation({ state, onValidate, onNext, onBack }: Props) {
@@ -144,7 +145,7 @@ export function ReadinessValidation({ state, onValidate, onNext, onBack }: Props
             <ShieldCheck size={36} className="mx-auto text-neutral-300 mb-3" />
             <p className="text-sm font-medium text-neutral-700">Ready to validate</p>
             <p className="text-xs text-neutral-400 mt-1">
-              Runs 5 categories of checks across facility data, generation data, emission factor, calculation integrity, and audit trail.
+              Runs up to 6 categories of checks: facility data, generation data, emission factor, calculation integrity, audit trail, and hourly data coverage.
             </p>
           </div>
         </Card>

@@ -87,6 +87,16 @@ export function ReportExport({ state, onGenerated, onBack }: Props) {
               <FieldRow label="Report ID" value={reportArtifact.reportId} mono locked />
               <FieldRow label="Generated At" value={new Date(reportArtifact.generatedAt).toLocaleString()} locked />
               <FieldRow label="Facility" value={facility?.name ?? '—'} locked />
+              {state.calculation && (
+                <FieldRow
+                  label="Calculation Mode"
+                  value={state.calculation.mode === 'hourly_marginal' ? 'Hourly Marginal (V2)' : 'Annual Flat Rate (V1)'}
+                  locked
+                />
+              )}
+              {state.calculation?.balancingAuthority && (
+                <FieldRow label="Balancing Authority" value={state.calculation.balancingAuthority} mono locked />
+              )}
               <FieldRow label="Files in Package" value={`${reportArtifact.manifest.length} files`} />
             </div>
           </Card>

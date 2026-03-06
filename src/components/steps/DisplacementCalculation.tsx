@@ -1,17 +1,50 @@
 import { useState } from 'react';
-import { Calculator, TrendingUp, AlertCircle } from 'lucide-react';
-import { AppState, Calculation, AuditEvent } from '../../types';
+import { Calculator, TrendingUp, AlertCircle, Zap, Clock } from 'lucide-react';
+import { AppState, Calculation, AuditEvent, HourlyDisplacement } from '../../types';
 import { calculateDisplacement, projectRevenue, FORMULA_VERSION, LBS_PER_MT } from '../../lib/calculation';
 import { createAuditEvent } from '../../lib/auditLog';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { FieldRow } from '../ui/FieldRow';
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 
 interface Props {
   state: AppState;
   onCalculate: (calc: Calculation, event: AuditEvent) => void;
   onNext: () => void;
   onBack: () => void;
+}
+
+interface DailyChartPoint {
+  date: string;
+  mt: number;
+  dominantFuel: string;
+}
+
+function aggregateHourlyToDaily(hourlyResults: HourlyDisplacement[]): DailyChartPoint[] {
+  const byDate = new Map<string, { mt: number; coal: number; gas: number; oil: number }>();
+  for (const h of hourlyResults) {
+    const date = h.hour.slice(0, 10);
+    const existing = byDate.get(date) ?? { mt: 0, coal: 0, gas: 0, oil: 0 };
+    existing.mt += h.displacedMtCo2;
+    const fossil = h.fuelMix.coal + h.fuelMix.gas + h.fuelMix.oil;
+    if (fossil > 0) {
+      existing.coal += h.displacedMtCo2 * (h.fuelMix.coal / fossil);
+      existing.gas  += h.displacedMtCo2 * (h.fuelMix.gas  / fossil);
+      existing.oil  += h.displacedMtCo2 * (h.fuelMix.oil  / fossil);
+    }
+    byDate.set(date, existing);
+  }
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => {
+      const dominant = v.coal >= v.gas && v.coal >= v.oil ? 'coal'
+        : v.gas >= v.coal && v.gas >= v.oil ? 'gas' : 'oil';
+      return { date, mt: parseFloat(v.mt.toFixed(4)), dominantFuel: dominant };
+    });
 }
 
 export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: Props) {
@@ -39,11 +72,13 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
       calculationId: newCalc.id,
       facilityId: newCalc.facilityId,
       formulaVersion: newCalc.formulaVersion,
+      mode: newCalc.mode,
       totalMwh: newCalc.totalMwh,
       co2LbsPerMwh: newCalc.co2LbsPerMwh,
       rawMt: newCalc.rawMt,
       adjustedMt: newCalc.adjustedMt,
       sourceFileHash: newCalc.sourceFileHash,
+      balancingAuthority: newCalc.balancingAuthority,
     });
 
     onCalculate(newCalc, event);
@@ -51,8 +86,11 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
   }
 
   const ef = facility.emissionFactor;
-  const rev7 = calculation ? projectRevenue(calculation.adjustedMt, 7) : null;
+  const rev7  = calculation ? projectRevenue(calculation.adjustedMt, 7)  : null;
   const rev20 = calculation ? projectRevenue(calculation.adjustedMt, 20) : null;
+
+  const dailyChart = calculation?.hourlyResults ? aggregateHourlyToDaily(calculation.hourlyResults) : [];
+  const fb = calculation?.fuelBreakdown;
 
   function fmt(n: number, d = 2) {
     return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -71,6 +109,21 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
         </div>
       </div>
 
+      {/* Methodology badge */}
+      {calculation && (
+        <div className={[
+          'flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium',
+          calculation.mode === 'hourly_marginal'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : 'bg-amber-50 border-amber-200 text-amber-800',
+        ].join(' ')}>
+          {calculation.mode === 'hourly_marginal'
+            ? <><Zap size={15} className="shrink-0" /> Hourly Marginal Displacement — {calculation.hourlyResults?.length.toLocaleString()} hours analyzed</>
+            : <><Clock size={15} className="shrink-0" /> Annual Flat Rate (Fallback) — {calculation.fallbackReason}</>
+          }
+        </div>
+      )}
+
       {/* Inputs summary */}
       <Card title="Calculation Inputs">
         <div className="space-y-0.5">
@@ -80,6 +133,9 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
           <FieldRow label="Total Generation" value={`${fmt(generationData.totalMwh)} MWh`} mono locked />
           <FieldRow label="Monitoring Period" value={`${generationData.dateRange.start} → ${generationData.dateRange.end}`} locked />
           <FieldRow label="Source File Hash" value={generationData.fileHash.slice(0, 16) + '…'} mono locked />
+          {state.gridMixData && state.gridMixData.length > 0 && (
+            <FieldRow label="EIA Grid Mix" value={`${state.gridMixData.length.toLocaleString()} records (${calculation?.balancingAuthority ?? '…'})`} mono locked />
+          )}
         </div>
       </Card>
 
@@ -97,7 +153,7 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
           )}
         </div>
         <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
-          <span>Formula version: <span className="font-mono">{FORMULA_VERSION}</span></span>
+          <span>Formula version: <span className="font-mono">{calculation?.formulaVersion ?? FORMULA_VERSION}</span></span>
           <span>Divisor: 2,204.62 lb/MT (exact)</span>
         </div>
       </Card>
@@ -110,6 +166,9 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
             <FieldRow label="Formula Version" value={calculation.formulaVersion} mono locked />
             <FieldRow label="Dataset Version" value={calculation.datasetVersion} mono locked />
             <FieldRow label="eGRID Rate ID" value={calculation.egridRateId} mono locked />
+            {calculation.balancingAuthority && (
+              <FieldRow label="Balancing Authority" value={calculation.balancingAuthority} mono locked />
+            )}
             <FieldRow label="Raw CO₂" value={`${fmt(calculation.rawMt)} MT`} mono locked />
             <FieldRow label="Adjustment Factor" value={`${calculation.adjustmentFactor}`} mono locked />
             <FieldRow label="Status" value={calculation.status.toUpperCase()} />
@@ -130,6 +189,86 @@ export function DisplacementCalculation({ state, onCalculate, onNext, onBack }: 
           <div className="text-center py-6">
             <Calculator size={32} className="mx-auto text-neutral-300 mb-3" />
             <p className="text-sm text-neutral-500">Run the calculation to compute CO₂ displacement</p>
+          </div>
+        </Card>
+      )}
+
+      {/* Displacement over time chart (hourly mode only) */}
+      {calculation?.mode === 'hourly_marginal' && dailyChart.length > 0 && (
+        <Card title="Displacement Over Time">
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={dailyChart} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="mtGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tickFormatter={d => d.slice(5)}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tickFormatter={v => `${v.toFixed(1)}`}
+                  width={40}
+                />
+                <Tooltip
+                  formatter={(value: number | undefined) => [`${(value ?? 0).toFixed(3)} MT CO₂`, 'Displaced']}
+                  labelFormatter={l => `Date: ${l}`}
+                  contentStyle={{ fontSize: 12 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="mt"
+                  stroke="#3b82f6"
+                  strokeWidth={1.5}
+                  fill="url(#mtGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-neutral-400 mt-2">Daily MT CO₂ displaced over the monitoring period</p>
+        </Card>
+      )}
+
+      {/* Fuel breakdown (hourly mode only) */}
+      {calculation?.mode === 'hourly_marginal' && fb && (
+        <Card title="Fuel Displacement Breakdown">
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            {[
+              { label: 'Coal', mt: fb.coalMt, pct: fb.coalPct, color: 'bg-neutral-700' },
+              { label: 'Natural Gas', mt: fb.gasMt, pct: fb.gasPct, color: 'bg-blue-500' },
+              { label: 'Petroleum', mt: fb.oilMt, pct: fb.oilPct, color: 'bg-amber-600' },
+            ].map(f => (
+              <div key={f.label} className="text-center">
+                <p className="text-xs text-neutral-500 mb-1">{f.label}</p>
+                <p className="text-lg font-bold text-neutral-800 font-mono">{fmt(f.mt)} MT</p>
+                <p className="text-xs text-neutral-400">{f.pct.toFixed(1)}%</p>
+              </div>
+            ))}
+          </div>
+          {/* Stacked bar */}
+          <div className="flex h-3 rounded-full overflow-hidden gap-0.5">
+            <div className="bg-neutral-700 transition-all" style={{ width: `${fb.coalPct}%` }} />
+            <div className="bg-blue-500 transition-all"   style={{ width: `${fb.gasPct}%` }} />
+            <div className="bg-amber-600 transition-all"  style={{ width: `${fb.oilPct}%` }} />
+          </div>
+          <div className="flex items-center gap-4 mt-2">
+            {[
+              { label: 'Coal',        color: 'bg-neutral-700' },
+              { label: 'Natural Gas', color: 'bg-blue-500' },
+              { label: 'Petroleum',   color: 'bg-amber-600' },
+            ].map(f => (
+              <div key={f.label} className="flex items-center gap-1.5 text-xs text-neutral-500">
+                <span className={`w-2.5 h-2.5 rounded-sm ${f.color}`} />
+                {f.label}
+              </div>
+            ))}
           </div>
         </Card>
       )}
