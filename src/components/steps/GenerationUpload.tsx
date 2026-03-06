@@ -83,6 +83,9 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
       dateRange: result.dateRange!,
       committedAt: new Date().toISOString(),
       rawCsvContent: rawContent,
+      granularity: 'daily',
+      hourlyRecords: null,
+      interpolated: false,
     };
 
     const event = createAuditEvent('generation_data_uploaded', {

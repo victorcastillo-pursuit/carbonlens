@@ -34,6 +34,12 @@ export function calculateDisplacement(
     calculatedAt: new Date().toISOString(),
     sourceFileHash: generationData.fileHash,
     status: 'active',
+    mode: 'annual_flat',
+    balancingAuthority: null,
+    hourlyResults: null,
+    fuelBreakdown: null,
+    fallbackReason: null,
+    gridMixHash: null,
   };
 }
 

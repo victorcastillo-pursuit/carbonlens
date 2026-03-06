@@ -23,6 +23,8 @@ const INITIAL_STATE: AppState = {
   readiness: null,
   reportArtifact: null,
   auditLog: [],
+  gridMixData: null,
+  facilityLookup: null,
 };
 
 // ── Reducer ──────────────────────────────────────────────────────────────────
