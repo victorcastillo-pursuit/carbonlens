@@ -15,13 +15,22 @@ export default defineConfig(({ mode }) => {
             const separator = cleaned.includes('?') ? '&' : '?';
             return cleaned + separator + 'api_key=' + env.VITE_EIA_API_KEY;
           },
+          configure: (proxy) => {
+            proxy.on('proxyReq', (_proxyReq, req) => {
+              const key = env.VITE_EIA_API_KEY;
+              const keyStatus = key ? `key=${key.slice(0, 4)}…(${key.length} chars)` : 'KEY MISSING';
+              console.log(`[vite-proxy] EIA → https://api.eia.gov/v2${req.url} [${keyStatus}]`);
+            });
+            proxy.on('error', (err) => {
+              console.error('[vite-proxy] EIA error:', err.message);
+            });
+          },
         },
-        // Uncomment if USPVDB blocks browser CORS requests:
-        // '/api/uspvdb': {
-        //   target: 'https://energy.usgs.gov/api/uspvdb/v1',
-        //   changeOrigin: true,
-        //   rewrite: (path) => path.replace(/^\/api\/uspvdb/, ''),
-        // },
+        '/api/uspvdb': {
+          target: 'https://energy.usgs.gov/api/uspvdb/v1',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/uspvdb/, ''),
+        },
       },
     },
   };

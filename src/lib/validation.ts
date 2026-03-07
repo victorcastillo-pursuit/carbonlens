@@ -129,11 +129,18 @@ export function runReadinessValidation(state: AppState): ReadinessResult {
   const hasBothMt = calc && calc.rawMt != null && calc.adjustedMt != null;
   const notSuperseded = calc?.status === 'active';
 
-  // Verify arithmetic independently
+  // Verify arithmetic independently — method differs by calculation mode
   let arithmeticOk = false;
   if (calc && state.facility) {
-    const expected = (calc.totalMwh * calc.co2LbsPerMwh) / LBS_PER_MT;
-    arithmeticOk = Math.abs(expected - calc.rawMt) < 0.01;
+    if (calc.mode === 'hourly_marginal' && calc.hourlyResults) {
+      // Hourly: rawMt must equal the sum of all hourly displacedMtCo2 values
+      const summedMt = calc.hourlyResults.reduce((sum, r) => sum + r.displacedMtCo2, 0);
+      arithmeticOk = Math.abs(summedMt - calc.rawMt) < 0.1;
+    } else {
+      // Flat rate: rawMt must match the CDM AMS I.D formula
+      const expected = (calc.totalMwh * calc.co2LbsPerMwh) / LBS_PER_MT;
+      arithmeticOk = Math.abs(expected - calc.rawMt) < 0.01;
+    }
   }
 
   // Verify adjustment factor
@@ -173,7 +180,9 @@ export function runReadinessValidation(state: AppState): ReadinessResult {
     message: !calc
       ? 'No calculation'
       : arithmeticOk
-      ? `Raw MT: ${calc.rawMt.toFixed(2)} MT CO₂`
+      ? `Raw MT: ${calc.rawMt.toFixed(2)} MT CO₂ (${calc.mode === 'hourly_marginal' ? 'hourly sum verified' : 'flat-rate formula verified'})`
+      : calc.mode === 'hourly_marginal'
+      ? `Hourly sum mismatch — stored rawMt does not match sum of hourly displacement records`
       : `Arithmetic mismatch — expected ${((calc.totalMwh * calc.co2LbsPerMwh) / LBS_PER_MT).toFixed(4)} MT`,
   });
 

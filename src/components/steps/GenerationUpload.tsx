@@ -96,9 +96,9 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
       dateRange: result.dateRange!,
       committedAt: new Date().toISOString(),
       rawCsvContent: rawContent,
-      granularity: 'daily',
-      hourlyRecords: null,
-      interpolated: false,
+      granularity: result.granularity,
+      hourlyRecords: result.hourlyRecords,
+      interpolated: false, // interpolation (if needed) applied in App.tsx handleGenerationCommit
     };
 
     const event = createAuditEvent('generation_data_uploaded', {
