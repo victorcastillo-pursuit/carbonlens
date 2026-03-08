@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle2, Clock, Zap, Loader2 } from 'lucide-react';
 import { AppState, GenerationData, AuditEvent } from '../../types';
 import { parseCsv } from '../../lib/csvParser';
+import { getPrimaryBA } from '../../data/egridCrosswalk';
 import { sha256Hex } from '../../lib/crypto';
 import { createAuditEvent } from '../../lib/auditLog';
 import { Button } from '../ui/Button';
@@ -20,10 +21,21 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
   const [dragging, setDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [preview, setPreview] = useState<{ fileName: string; totalMwh: number; recordCount: number; dateRange: { start: string; end: string }; hash: string; rawContent: string } | null>(null);
+  const [preview, setPreview] = useState<{ fileName: string; totalMwh: number; recordCount: number; dateRange: { start: string; end: string }; hash: string; rawContent: string; granularity: 'hourly' | 'daily' } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const ba = state.facility ? getPrimaryBA(state.facility.egridSubregion) : null;
+  const gridMixData = state.gridMixData;
   const generationData = state.generationData;
+
+  // EIA fetch status derived from state
+  const eiaStatus: 'idle' | 'fetching' | 'success' | 'failed' | 'unsupported' = (() => {
+    if (!generationData) return 'idle';
+    if (!ba) return 'unsupported';
+    if (gridMixData && gridMixData.length > 0) return 'success';
+    if (gridMixData && gridMixData.length === 0) return 'failed';
+    return 'fetching';
+  })();
 
   async function processFile(file: File) {
     setParsing(true);
@@ -47,6 +59,7 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
       dateRange: result.dateRange!,
       hash,
       rawContent,
+      granularity: result.granularity,
     });
     setParsing(false);
   }
@@ -83,6 +96,9 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
       dateRange: result.dateRange!,
       committedAt: new Date().toISOString(),
       rawCsvContent: rawContent,
+      granularity: result.granularity,
+      hourlyRecords: result.hourlyRecords,
+      interpolated: false, // interpolation (if needed) applied in App.tsx handleGenerationCommit
     };
 
     const event = createAuditEvent('generation_data_uploaded', {
@@ -110,30 +126,75 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
       </div>
 
       {generationData && !preview && (
-        <Card
-          title="Committed Generation Data"
-          subtitle={`File hash locked at: ${new Date(generationData.committedAt).toLocaleString()}`}
-        >
-          <div className="space-y-0.5">
-            <FieldRow label="File Name" value={generationData.fileName} locked />
-            <FieldRow label="File Size" value={`${(generationData.fileSize / 1024).toFixed(1)} KB`} locked />
-            <FieldRow label="Records" value={`${generationData.records.length} daily entries`} locked />
-            <FieldRow label="Total Generation" value={`${generationData.totalMwh.toLocaleString(undefined, { maximumFractionDigits: 2 })} MWh`} mono locked />
-            <FieldRow label="Date Range" value={`${generationData.dateRange.start} → ${generationData.dateRange.end}`} locked />
-          </div>
-          <div className="mt-4 pt-3 border-t border-neutral-100">
-            <HashDisplay hash={generationData.fileHash} label="SHA-256:" />
-          </div>
-          <div className="mt-4 flex justify-between items-center">
-            <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()}>
-              Replace File
-            </Button>
-            <Button variant="primary" onClick={onNext}>
-              Continue to Calculation
-            </Button>
-          </div>
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-        </Card>
+        <>
+          <Card
+            title="Committed Generation Data"
+            subtitle={`File hash locked at: ${new Date(generationData.committedAt).toLocaleString()}`}
+          >
+            <div className="space-y-0.5">
+              <FieldRow label="File Name" value={generationData.fileName} locked />
+              <FieldRow label="File Size" value={`${(generationData.fileSize / 1024).toFixed(1)} KB`} locked />
+              <FieldRow label="Records" value={`${generationData.records.length} ${generationData.granularity === 'hourly' ? 'hourly' : 'daily'} entries`} locked />
+              <FieldRow label="Total Generation" value={`${generationData.totalMwh.toLocaleString(undefined, { maximumFractionDigits: 2 })} MWh`} mono locked />
+              <FieldRow label="Date Range" value={`${generationData.dateRange.start} → ${generationData.dateRange.end}`} locked />
+            </div>
+
+            {/* Granularity badge */}
+            <div className="mt-3 flex items-center gap-2">
+              {generationData.granularity === 'hourly' ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <Zap size={11} /> Hourly Data Detected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                  <Clock size={11} /> Daily Data — Interpolated to Hourly
+                </span>
+              )}
+              {generationData.interpolated && (
+                <p className="text-xs text-neutral-500">Daily values distributed across daylight hours using a standard solar profile.</p>
+              )}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-neutral-100">
+              <HashDisplay hash={generationData.fileHash} label="SHA-256:" />
+            </div>
+            <div className="mt-4 flex justify-between items-center">
+              <Button variant="ghost" size="sm" onClick={() => fileRef.current?.click()}>
+                Replace File
+              </Button>
+              <Button variant="primary" onClick={onNext}>
+                Continue to Calculation
+              </Button>
+            </div>
+            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+          </Card>
+
+          {/* EIA grid mix fetch status */}
+          {eiaStatus === 'fetching' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-700">
+              <Loader2 size={15} className="animate-spin shrink-0" />
+              Fetching hourly grid data from EIA for {ba}…
+            </div>
+          )}
+          {eiaStatus === 'success' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-100 text-sm text-emerald-700">
+              <CheckCircle2 size={15} className="shrink-0" />
+              EIA grid mix data loaded — {gridMixData!.length.toLocaleString()} records for {ba}. Hourly marginal calculation ready.
+            </div>
+          )}
+          {eiaStatus === 'failed' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-700">
+              <AlertCircle size={15} className="shrink-0" />
+              EIA data unavailable for {ba}. Calculation will use flat annual rate as fallback.
+            </div>
+          )}
+          {eiaStatus === 'unsupported' && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-neutral-50 border border-neutral-200 text-sm text-neutral-600">
+              <AlertCircle size={15} className="shrink-0" />
+              No EIA balancing authority for this subregion. Flat annual rate will be used.
+            </div>
+          )}
+        </>
       )}
 
       {!generationData && !preview && (
@@ -202,10 +263,24 @@ export function GenerationUpload({ state, onCommit, onNext, onBack }: Props) {
           </div>
           <div className="space-y-0.5">
             <FieldRow label="File Name" value={preview.fileName} />
-            <FieldRow label="Records" value={`${preview.recordCount} daily entries`} />
+            <FieldRow label="Records" value={`${preview.recordCount} ${preview.granularity === 'hourly' ? 'hourly' : 'daily'} entries`} />
             <FieldRow label="Total Generation" value={`${preview.totalMwh.toLocaleString(undefined, { maximumFractionDigits: 2 })} MWh`} mono />
             <FieldRow label="Date Range" value={`${preview.dateRange.start} → ${preview.dateRange.end}`} />
           </div>
+          <div className="mt-3 flex items-center gap-2">
+            {preview.granularity === 'hourly' ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Zap size={11} /> Hourly Data Detected
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                <Clock size={11} /> Daily Data — Will Interpolate to Hourly
+              </span>
+            )}
+          </div>
+          {preview.granularity === 'daily' && (
+            <p className="mt-2 text-xs text-neutral-500">Daily generation values will be distributed across daylight hours using a standard solar profile for hourly marginal calculation.</p>
+          )}
           <div className="mt-4 pt-3 border-t border-neutral-100">
             <HashDisplay hash={preview.hash} label="SHA-256 (preview):" />
             <p className="text-xs text-neutral-400 mt-1">This hash will be locked permanently upon commit.</p>
