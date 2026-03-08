@@ -1,6 +1,12 @@
 // Maps eGRID subregion codes → EIA balancing authority respondent codes.
 // First entry in each array is the primary BA used for EIA queries.
 // Empty arrays = no EIA hourly data available (AK, HI, PR).
+//
+// Verification notes:
+//   RFCW: EIA-923 confirms Prairie Wolf Solar (EIA Plant 62893, IL) is served by
+//         MISO, not PJM. RFCW spans both BAs but MISO is dominant in the western
+//         portion (IL, IN, MI west). Updated primary from PJM → MISO, March 2026.
+//   RFCM: PJM remains primary (OH, PA corridor); MISO secondary.
 export const SUBREGION_TO_BA: Record<string, string[]> = {
   AKGD: [],
   AKMS: [],
@@ -19,7 +25,7 @@ export const SUBREGION_TO_BA: Record<string, string[]> = {
   NYUP: ['NYIS'],
   RFCE: ['PJM'],
   RFCM: ['PJM', 'MISO'],
-  RFCW: ['PJM', 'MISO'],
+  RFCW: ['MISO', 'PJM'],  // verified: EIA-923 Plant 62893 (Prairie Wolf) → MISO
   RMPA: ['PSCO', 'WACM'],
   SPNO: ['SWPP'],
   SPSO: ['SWPP'],
