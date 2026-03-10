@@ -1,6 +1,6 @@
 # CarbonLens
 
-CarbonLense is a web application for small renewable energy producers to generate auditable carbon credit documentation quickly, and evolve toward transparent credit transactions.
+CarbonLens is a web application for small renewable energy producers to generate auditable carbon credit documentation quickly, and evolve toward transparent credit transactions.
 
 ## Problem the project solves
 Small carbon credit producers often face a complex, expensive verification process with fragmented spreadsheets, limited auditability, and unclear monetization pathways. This slows credit issuance and makes market participation difficult.
