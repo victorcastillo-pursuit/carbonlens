@@ -6,7 +6,12 @@ import { GenerationUpload } from './components/steps/GenerationUpload';
 import { DisplacementCalculation } from './components/steps/DisplacementCalculation';
 import { ReadinessValidation } from './components/steps/ReadinessValidation';
 import { ReportExport } from './components/steps/ReportExport';
-import { Facility, GenerationData, Calculation, ReadinessResult, ReportArtifact, AuditEvent } from './types';
+import { Facility, GenerationData, Calculation, ReadinessResult, ReportArtifact, AuditEvent, USPVDBFacility } from './types';
+import { fetchHourlyGridMix } from './services/eia';
+import { getPrimaryBA } from './data/egridCrosswalk';
+import { sha256Hex } from './lib/crypto';
+import { createAuditEvent } from './lib/auditLog';
+import { interpolateDailyToHourly } from './lib/csvParser';
 
 export default function App() {
   const { state, actions, unlockedSteps } = useAppState();
@@ -34,14 +39,51 @@ export default function App() {
     actions.goToStep(2);
   }
 
-  // ── Step 2 handlers ────────────────────────────────────────────────────────
-  function handleGenerationCommit(data: GenerationData, event: AuditEvent) {
-    // If re-uploading, reset downstream state
-    if (state.generationData) {
-      actions.resetFromStep(3);
-    }
-    actions.setGenerationData(data);
+  function handleFacilityLookup(uspvdb: USPVDBFacility, event: AuditEvent) {
+    actions.setFacilityLookup(uspvdb);
     actions.appendAuditEvent(event);
+  }
+
+  // ── Step 2 handlers ────────────────────────────────────────────────────────
+  async function handleGenerationCommit(data: GenerationData, event: AuditEvent) {
+    // Interpolate daily to hourly if needed
+    let committed = data;
+    if (data.granularity === 'daily') {
+      const hourlyRecords = interpolateDailyToHourly(data.records);
+      committed = { ...data, hourlyRecords, interpolated: true };
+    }
+
+    actions.setGenerationData(committed);
+    actions.appendAuditEvent(event);
+
+    // Automatically fetch EIA grid mix if facility has a BA mapping
+    const ba = state.facility ? getPrimaryBA(state.facility.egridSubregion) : null;
+    if (ba && committed.dateRange) {
+      await handleGridMixFetch(ba, committed.dateRange.start, committed.dateRange.end);
+    }
+  }
+
+  async function handleGridMixFetch(balancingAuthority: string, startDate: string, endDate: string) {
+    const gridMix = await fetchHourlyGridMix(balancingAuthority, startDate, endDate);
+    actions.setGridMixData(gridMix);
+
+    if (gridMix.length > 0) {
+      const hash = await sha256Hex(JSON.stringify(gridMix));
+      actions.appendAuditEvent(createAuditEvent('grid_mix_data_fetched', {
+        balancingAuthority,
+        startDate,
+        endDate,
+        recordCount: gridMix.length,
+        hash,
+      }));
+    } else {
+      actions.appendAuditEvent(createAuditEvent('grid_mix_fetch_failed', {
+        balancingAuthority,
+        startDate,
+        endDate,
+        reason: 'EIA API returned no data or request failed',
+      }));
+    }
   }
 
   // ── Step 3 handlers ────────────────────────────────────────────────────────
@@ -52,6 +94,17 @@ export default function App() {
     }
     actions.setCalculation(calc);
     actions.appendAuditEvent(event);
+
+    // Log fallback event when flat-rate is used instead of hourly marginal
+    if (calc.mode === 'annual_flat' && calc.fallbackReason) {
+      actions.appendAuditEvent(createAuditEvent('calculation_mode_fallback', {
+        calculationId: calc.id,
+        fallbackReason: calc.fallbackReason,
+        gridMixDataAvailable: !!(state.gridMixData && state.gridMixData.length > 0),
+        hourlyRecordsAvailable: !!(state.generationData?.hourlyRecords?.length),
+      }));
+    }
+
     actions.goToStep(4);
   }
 
@@ -86,6 +139,7 @@ export default function App() {
           <FacilityOnboarding
             state={state}
             onSave={handleFacilitySave}
+            onLookup={handleFacilityLookup}
             onNext={goNext}
           />
         )}

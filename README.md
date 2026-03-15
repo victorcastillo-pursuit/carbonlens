@@ -1,57 +1,39 @@
 # CarbonLens
 
-A browser-based carbon credit documentation tool for solar energy facilities.
+CarbonLens is a web application for small renewable energy producers to generate auditable carbon credit documentation quickly, and evolve toward transparent credit transactions.
 
 ---
 
-## The Problem
+## Problem the project solves
 
-Solar energy producers lack a simple, auditable way to calculate and document the carbon credits their systems generate. Existing tools are either too complex, require specialized software, or lack the transparency needed for third-party verification — leaving facilities without a straightforward workflow to go from raw generation data to a verified, exportable report aligned with EPA emission standards.
-
----
-
-## The Solution
-
-CarbonLens provides a step-by-step, fully client-side workflow that guides users from facility setup to a verified, exportable carbon credit report. It applies EPA eGRID 2023 emission factors to raw generation data and produces a tamper-evident PDF — no backend, no account, no data sent anywhere.
+Small carbon credit producers often face a complex, expensive verification process with fragmented spreadsheets, limited auditability, and unclear monetization pathways. This slows credit issuance and makes market participation difficult.
 
 ---
 
-## Key Features
+## Solution overview
 
-- Step-by-step guided workflow: Facility → Generation → Calculation → Validation → Export
-- EPA eGRID 2023 Rev 2 emission factors across 27 subregions
-- SHA-256 cryptographic hashing for tamper-evident audit trail
-- Client-side PDF generation and ZIP export — no backend required
-- CSV generation data import via PapaParse for bulk entry
+CarbonLens provides a deterministic 5-step workflow that transforms facility and generation inputs into a verification-ready export package (PDF/JSON/CSV/audit trail + checksums). The long-term direction extends this into a marketplace flow for credit listing, buyer discovery, and simplified transactions.
 
----
+```mermaid
+flowchart LR
+  USER["User"]
+  UI["React UI"]
+  STATE["App State\n(useAppState)"]
+  LIB["Domain Logic\n(src/lib)"]
+  DATA["eGRID Dataset"]
+  REPORT["Report Generation"]
+  OUT["Export Outputs\nPDF / CSV / ZIP"]
 
-## Tech Stack
-
-| Layer | Technologies |
-|---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS |
-| Libraries | jsPDF, JSZip, PapaParse, lucide-react |
-| Security | Web Crypto API (SHA-256) |
-| Data | EPA eGRID 2023 Rev 2 (embedded, no external API calls) |
-
----
-
-## Getting Started
-
-```bash
-# Clone the repository
-git clone https://github.com/victorcastillo-pursuit/carbonlens.git
-cd carbonlens
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
+  USER --> UI
+  UI --> STATE
+  STATE --> LIB
+  DATA --> LIB
+  LIB --> STATE
+  STATE --> REPORT
+  REPORT --> OUT
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+*Flow summary: the user interacts with the React screens, state is managed in `useAppState`, core calculations/validation run in `src/lib` using eGRID data, and the final step generates downloadable PDF/CSV/ZIP outputs.*
 
 ---
 
@@ -77,7 +59,73 @@ Carbon Credits (MT CO₂) = Generation (MWh) × Emission Factor (lb/MWh) ÷ 2204
 
 ---
 
-## Project Type
+## Key features
 
-Pursuit Fellowship — Solo portfolio project
-**Developer:** Victor Castillo
+- 5-step guided workflow: facility onboarding → generation upload → displacement calculation → readiness validation → export
+- Deterministic carbon displacement calculation using versioned eGRID factors
+- CSV validation and SHA-256 file hashing for tamper-evident inputs
+- Readiness validation across data quality, methodology alignment, and audit integrity
+- Export package generation with manifest checksums and ZIP download
+- Revenue projection snapshots for common carbon price points
+
+---
+
+## Tech stack
+
+| Layer | Technologies |
+|---|---|
+| Frontend | React 18, TypeScript, Vite 5, Tailwind CSS 3 |
+| Libraries | jsPDF, JSZip, PapaParse, lucide-react |
+| Security | Web Crypto API (SHA-256) |
+| Data | EPA eGRID 2023 Rev 2 (embedded, no external API calls) |
+
+---
+
+## Project structure
+
+```text
+src/
+  components/
+    Layout/      # Header and step navigation
+    steps/       # 5 workflow step screens
+    ui/          # Reusable UI primitives
+  hooks/         # App state management (useAppState)
+  lib/           # Core domain logic (calc, validation, export, audit, crypto)
+  data/          # Versioned eGRID dataset
+  types/         # Shared TypeScript interfaces
+assets/          # Static media assets
+```
+
+---
+
+## Installation
+
+```bash
+npm install
+```
+
+## Development commands
+
+```bash
+npm run dev      # start local dev server
+npm run build    # type-check + production build
+npm run preview  # preview production build locally
+```
+
+---
+
+## Future roadmap
+
+- Credit inventory and listing management
+- Transparent pricing dashboards
+- Buyer discovery and matching
+- Simplified offer/transaction workflows
+- External registry or marketplace integrations
+
+---
+
+## Contributors
+
+- Luba Kaper
+- Victor Castillo
+- Edwin Perez

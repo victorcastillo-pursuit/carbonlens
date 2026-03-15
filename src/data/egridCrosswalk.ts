@@ -1,0 +1,57 @@
+// Maps eGRID subregion codes → EIA balancing authority respondent codes.
+// First entry in each array is the primary BA used for EIA queries.
+// Empty arrays = no EIA hourly data available (AK, HI, PR).
+//
+// Verification notes:
+//   RFCW: EIA-923 confirms Prairie Wolf Solar (EIA Plant 62893, IL) is served by
+//         MISO, not PJM. RFCW spans both BAs but MISO is dominant in the western
+//         portion (IL, IN, MI west). Updated primary from PJM → MISO, March 2026.
+//   RFCM: PJM remains primary (OH, PA corridor); MISO secondary.
+export const SUBREGION_TO_BA: Record<string, string[]> = {
+  AKGD: [],
+  AKMS: [],
+  AZNM: ['SRP', 'AZPS', 'PNM'],
+  CAMX: ['CISO'],
+  ERCT: ['ERCO'],
+  FRCC: ['FPC', 'FPL', 'JEA', 'SEC', 'TEC', 'TAL', 'HST', 'GVL', 'NSB'],
+  HIOA: [],
+  HIMS: [],
+  MROE: ['MISO'],
+  MROW: ['MISO', 'SWPP'],
+  NEWE: ['ISNE'],
+  NWPP: ['BPAT', 'PACW', 'PSEI', 'AVA', 'CHPD', 'DOPD', 'GCPD', 'TPWR'],
+  NYCW: ['NYIS'],
+  NYLI: ['NYIS'],
+  NYUP: ['NYIS'],
+  RFCE: ['PJM'],
+  RFCM: ['PJM', 'MISO'],
+  RFCW: ['MISO', 'PJM'],  // verified: EIA-923 Plant 62893 (Prairie Wolf) → MISO
+  RMPA: ['PSCO', 'WACM'],
+  SPNO: ['SWPP'],
+  SPSO: ['SWPP'],
+  SRMV: ['MISO'],
+  SRMW: ['MISO'],
+  SRSO: ['SOCO'],
+  SRTV: ['TVA'],
+  SRVC: ['CPLE', 'DUK', 'SC', 'SCEG'],
+  PRMS: [],
+};
+
+/** Returns the primary BA code for a subregion, or null if unsupported. */
+export function getPrimaryBA(subregionCode: string): string | null {
+  const bas = SUBREGION_TO_BA[subregionCode];
+  return bas && bas.length > 0 ? bas[0] : null;
+}
+
+/** Returns true if the subregion has at least one BA mapping. */
+export function hasHourlyDataSupport(subregionCode: string): boolean {
+  const bas = SUBREGION_TO_BA[subregionCode];
+  return !!bas && bas.length > 0;
+}
+
+/** Returns all subregions mapped to a given BA code. */
+export function getSubregionsForBA(baCode: string): string[] {
+  return Object.entries(SUBREGION_TO_BA)
+    .filter(([, bas]) => bas.includes(baCode))
+    .map(([code]) => code);
+}
