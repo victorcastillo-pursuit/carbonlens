@@ -43,6 +43,10 @@ flowchart LR
 
 ![Facility Onboarding](./public/screenshots/step1-facility.png)
 
+**Step 3 — Displacement Calculation with locked inputs and SHA-256 hash**
+
+![Displacement Calculation](./public/screenshots/step3-calculation.png)
+
 [View Sample Monitoring Report (PDF)](./public/monitoring_report.pdf)
 
 ---
