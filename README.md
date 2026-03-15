@@ -37,6 +37,16 @@ flowchart LR
 
 ---
 
+## Screenshots
+
+**Step 1 — Facility Onboarding**
+
+![Facility Onboarding](./public/screenshots/step1-facility.png)
+
+[View Sample Monitoring Report (PDF)](./public/monitoring_report.pdf)
+
+---
+
 ## How It Works
 
 1. **Facility Setup** — Enter facility name, location, and select your EPA eGRID subregion
